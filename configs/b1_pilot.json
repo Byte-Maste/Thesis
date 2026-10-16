@@ -1,0 +1,14 @@
+{
+  "benchmark": "b1",
+  "corpus": "groover-4th-ch10",
+  "pdf_pages": [219, 233],
+  "chunk_size": 600,
+  "chunk_overlap": 100,
+  "top_k": 3,
+  "temperature": 0,
+  "seed": 11,
+  "generator": "command-a-03-2025",
+  "embedder": "embed-v4.0",
+  "extractor_and_judge": "gemini-2.5-flash",
+  "conditions": ["A", "C"]
+}

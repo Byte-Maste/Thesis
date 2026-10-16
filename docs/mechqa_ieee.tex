@@ -1,0 +1,418 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{float}
+
+\begin{document}
+
+\title{Fact Cards Beside the Paragraphs:\\
+A 200-Question Pilot on MechQA}
+
+\author{
+\IEEEauthorblockN{Krishna}
+\IEEEauthorblockA{Department of Computer Science and Engineering\\
+Sri Sairam Engineering College\\
+Chennai, India}
+\and
+\IEEEauthorblockN{V. Saranya}
+\IEEEauthorblockA{Department of Computer Science and Engineering\\
+Sri Sairam Engineering College\\
+Chennai, India}
+}
+
+\maketitle
+
+\begin{abstract}
+A materials question is usually after one number or one alloy name sitting inside a long paragraph. This paper asks whether handing the model a few short fact cards, on top of the nearest paragraphs, makes that answer easier to copy. Both setups use the public MechQA file. Paragraphs are ranked with Cohere embeddings and cosine similarity. The second setup keeps those paragraphs and then appends material, property, and value cards taken from the same text. The model, the temperature, the instruction, and the cutoff stay fixed. On 200 validation questions locked before scoring, the combined prompt scores 0.18 exact match and paragraphs alone score 0.16. Most of that small lift comes from questions that give a number and ask which material it belongs to. A third run that sees only the cards, included so the combined score is not mistaken for the best score, reaches 0.21. Adding the cards beats paragraphs alone. It does not beat the cards by themselves.
+\end{abstract}
+
+\begin{IEEEkeywords}
+retrieval-augmented generation, knowledge graph, mechanical properties, MechQA, exact match
+\end{IEEEkeywords}
+
+\section{Introduction}
+Someone who already has the right paragraph can underline the number. The harder job is finding that paragraph. Papers on alloys repeat the same units, so a question about strength sits close to many different materials at once. A search that follows wording then brings back a paragraph on the right topic and the wrong alloy.
+
+One way to keep a language model from inventing the number is to paste source text into the prompt \cite{lewis2020rag,guu2020realm,izacard2021fid,gao2023ragsurvey}. A model that is left to recall a fact from its parameters often misses or invents it \cite{petroni2019lama,ji2023hallucination,shuster2021hallucination}. The usual search ranks chunks by how close their embeddings are \cite{vaswani2017attention,devlin2019bert,reimers2019sbert,karpukhin2020dpr}. That works when the question already names the material, as in ``what is the yield strength of GNS/Cu.'' It slips when the question states the measurement and asks for the name, because lots of paragraphs carry a similar measurement and the right name need not be the nearest vector.
+
+The same fact can be written as a short card: material, property, value. Search can then look for the value instead of for a paragraph that merely sounds related. The card is only as careful as the program that wrote it, and it leaves out the warnings that sit in the sentences around the number.
+
+The proposed method builds both indexes from one locked set of paragraphs and compares two ways of filling the prompt. The first way sends the top paragraphs. The second way sends those paragraphs and then the top cards. The model, the instruction, the temperature, and the cutoff are the same, so a change in score comes from what was pasted in. A third run drops the paragraphs and keeps the cards. That run is reported so the combined score is not read as the winner. It is not a third screen in a product.
+
+The questions come from MechQA \cite{zhang2026mechqa}. Each row has a question, one source paragraph, and a short recorded answer. The people who released that file score a reader who is already holding the right paragraph. This study withholds that paragraph and requires the system to find it. This is not the textbook question set in ManuRAG \cite{li2026manurag}, and the percentages printed there are not a target for the present experiment.
+
+The contribution of this paper is a comparison, fixed before any answer was scored, of paragraphs alone against the same paragraphs plus cards. The 200 validation questions are broken out by question type and by the five mechanical properties. The comparison also counts how often the right paragraph is among the top three, and how often the recorded words appear in the answer line even though the line still fails an exact match.
+
+\section{Related Work}
+\subsection{Passage retrieval and generation}
+Lewis and colleagues pull passages by dense similarity and then let a sequence model read the question glued to those passages \cite{lewis2020rag}. The model may copy a span or write a new sentence. Early open-domain systems already retrieved Wikipedia passages before reading them \cite{chen2017drqa}. Later retrievers train a question encoder and a passage encoder so the right passage ranks above others from the same collection \cite{karpukhin2020dpr,xiong2021ance,khattab2020colbert}. Generative readers then condition on those passages, either by pre-training with a retrieval step or by fusing the top passages at generation time \cite{guu2020realm,izacard2021fid,izacard2023atlas,borgeaud2022retro}. In all of those designs the thing you retrieve is still a passage. None of them keeps the measurement as its own object, ready to be matched when the question and the paragraph use different words.
+
+That gap shows up quickly in technical writing. Ask about 851~MPa and every paragraph that mentions a tensile strength near that size looks alike. The embedding piles those paragraphs together. The alloy name, which is the actual answer, is only a small piece of the vector. Sorting by the whole paragraph then prefers ``this is about strength'' over ``this is the exact value.''
+
+\subsection{Graphs over a corpus}
+A knowledge graph is a set of entities joined by typed edges \cite{hogan2021kg}. Joining that store to a language model is surveyed as its own research line \cite{pan2024llmkg}. One design scores paths on the graph before the model answers \cite{yasunaga2021qagnn}. Edge and colleagues pull entities and relations out of a corpus, write summaries of groups in the graph, and answer from those summaries rather than from the nearest chunks alone \cite{edge2024graphrag}. Their target is a written briefing over a document collection. The graph there is a way to summarise. The graph in the present study is smaller. Each card is one mechanical-property fact, and the reply has to be a short string that matches a recorded answer. Community summaries are not built. The graph is a list of \((m,p,v)\) rows with a pointer back to the paragraph they came from.
+
+Other combined systems fetch passages and then add neighbours from a graph. The neighbour helps when it supplies a fact the passage never stated. It hurts when the passage is already the wrong one and stays in the prompt, because the model treats every line it was given as fair evidence. The present experiment is that second case, and the counts below are arranged to show it.
+
+\subsection{Manufacturing questions and MechQA}
+ManuRAG lines up textbook prose with descriptions of figures and tables before it embeds them, and it tests questions drawn from a manufacturing textbook \cite{li2026manurag}. What gets retrieved is still mixed text and pictures. A graph of equipment, work orders, and standards is not part of that design. Their scores belong to a closed question file and a different model. That work is cited because manufacturing questions are the wider problem, not because the present experiment tries to match those percentages.
+
+Embeddings of the materials literature already place related compounds near one another \cite{tshitoyan2019nature}. Domain language models and extraction pipelines have been built for that literature \cite{gupta2022matscibert,olivetti2020apr,weston2019ner}. MechQA is drawn from mechanical properties already tabulated in the literature \cite{zhang2026mechqa}. The public file holds 202{,}068 rows laid out like SQuAD: a question, a context paragraph, and an answer span with a character offset. Each row is tagged with one of three question types. Numeric Lookup asks for a value. Entity Lookup asks which material has a stated value. Property Identification asks which property a stated value belongs to. The original tests hand the right paragraph to the reader and score extraction. Once the paragraph is given, the search problem studied here disappears. This study indexes the paragraphs and requires the system to locate the useful one.
+
+\section{Problem Setup}
+Call the corpus a set of paragraphs \(\{d_1,\ldots,d_N\}\) and call the question \(q\). The retrieved text is packed into a string \(c\). A generator \(G\), always at temperature 0, writes
+\begin{equation}
+\hat{y} = G(q, c).
+\end{equation}
+The recorded answer \(y\) is a span inside one source paragraph. The whole of \(\hat{y}\) is not scored. The instruction tells the model to finish with a line that starts \texttt{Result:}, and only the words after that marker are compared. Otherwise a long explanation would be matched, character for character, against a short span.
+
+The comparison is SQuAD exact match \cite{rajpurkar2016squad,rajpurkar2018squad2}. Both strings are lowercased. Punctuation is stripped. The words \(a\), \(an\), and \(the\) are stripped. What remains must be the same string. A reply that has the right span plus a unit note, a second number, or another name for the alloy is still wrong. The rule was kept tight so the three setups can be compared on one scale. It also explains misses a person would have let through. Those near misses are counted on their own in Section~\ref{sec:results}. They are not folded into the exact-match table.
+
+The sample has three kinds of question. Numeric Lookup asks for a value, for example ``What is the yield strength of GNS/Cu?'' Entity Lookup asks for a material given a value, for example ``Which compound has an ultimate tensile strength of 851~MPa?'' Property Identification asks which recorded property a value belongs to. The properties that actually show up are yield strength, ultimate tensile strength, fracture strength, Young's modulus, and ductility. Fracture strength appears in only two questions, so that rate is printed and is not treated as a finding.
+
+The operating modes differ only in \(c\):
+\begin{align}
+c &= c_V && \text{vector}, \\
+c &= c_G && \text{graph only}, \\
+c &= c_V \,\|\, c_G && \text{hybrid}.
+\end{align}
+The symbol \(\|\) means concatenation. Paragraphs are written first. Triples are written second, under the heading used by the pilot program. No other text is inserted.
+
+\section{Method}
+\subsection{Vector retrieval}
+The same embedding model turns each paragraph \(d\) and the question \(q\) into vectors \(\mathbf{v}_d\) and \(\mathbf{v}_q\). Order is cosine similarity, the comparison used by the vector-space model of documents \cite{salton1975vsm,manning2008ir},
+\begin{equation}
+s(q,d) = \frac{\mathbf{v}_q \cdot \mathbf{v}_d}{\|\mathbf{v}_q\|\,\|\mathbf{v}_d\|}.
+\end{equation}
+The paragraph context \(c_V\) is the text of the \(k\) paragraphs with the biggest \(s(q,d)\). Here \(k=3\). Paragraphs are embedded as search documents. The question is embedded as a search query. Those vectors are computed once and saved. Later runs do not embed the corpus again.
+
+Each paragraph goes into the prompt as one line: a short id, the DOI of the article, and the paragraph itself. The id is there so the later analysis can check whether the right paragraph was in the three. The model is not asked to print it.
+
+\subsection{Graph construction}
+From each paragraph an extractor writes triples
+\begin{equation}
+(m, p, v),
+\end{equation}
+with \(m\) a material, \(p\) a property name, and \(v\) the value on the page, plus the id of the paragraph it came from. The pilot keeps 688 triples from 192 paragraphs. The extractor may skip a fact or glue a value to a shortened alloy name. Those mistakes were left in. Fixing them by hand would describe a cleaned store, not the pipeline that actually ran.
+
+A question is tied to a triple by shared words, not by another embedding. The score is a raw overlap count, not a BM25 weight \cite{robertson2009bm25}. The proposed method takes question tokens longer than two characters. A triple scores how many of those tokens show up in \(m\), \(p\), or \(v\). The card context \(c_G\) is the \(k\) triples with the highest score, written as
+\begin{equation}
+m \xrightarrow{\text{has\_property}} p \xrightarrow{\text{has\_value}} v.
+\end{equation}
+Ties stay in sort order. Nothing learns a rank over the cards. The proposed method uses the same \(k=3\) as on the paragraph side, so the combined prompt is not given a longer list of facts than of paragraphs.
+
+Word overlap likes questions that already contain the alloy or the property. ``Yield strength'' together with ``GNS/Cu'' hits a card that contains those strings. A question that only has ``851'' and ``MPa'' hits every card whose value contains those tokens, and the top three are whichever of those cards share the most leftover words. Cutting at three does not promise that the true material is first.
+
+\subsection{Hybrid retrieval}
+The combined setup does not first decide what kind of question it has. It always builds
+\begin{equation}
+c_H = c_V \,\|\, c_G.
+\end{equation}
+There is no learned reranker \cite{nogueira2019bert}, and there is no rule that throws out a paragraph when its cosine score is weak. If the three paragraphs are the wrong ones, they still sit in the prompt next to the cards. The model is told to use only what it was given. It is not told to trust the cards when they disagree with the paragraphs. That clash is left to the model at temperature 0. The reply will be the same if the call is repeated. It will not necessarily match the recorded span.
+
+\subsection{Prompt and decoding}
+Every setup and every question gets the same instruction:
+\begin{quote}
+\small
+Answer the question using only the context below. If the context is insufficient, say so. End with the line: \texttt{Result:} followed by a short answer.
+\end{quote}
+The context block and the question come after that. The experiments request one completion per question per setup. Temperature is 0. There is no extra system prompt and no worked example in front. The three setups cannot differ because the instruction was worded differently. They differ because different lines were placed in the context block.
+
+\subsection{What this pilot leaves out}
+A separate industrial copilot, not scored here, fetches approved document chunks by cosine distance and then adds graph edges that belong to those documents. In that design the graph does not search by itself. Miss the document in the vector step and the edges from the right document never load. On MechQA the proposed method searches the card list directly, including when the right paragraph is outside the top three. Both ideas paste two sources into one prompt. The way the sources are chosen is not the same, and screenshots of that copilot are not evidence for the table in Section~\ref{sec:results}.
+
+The study also did not train a router that decides when retrieval is needed \cite{asai2024selfrag}, did not build a tree of paragraph summaries \cite{sarthi2024raptor}, did not drop low-scoring paragraphs, and did not fine-tune the generator on MechQA. The training split of the file was never read.
+
+\section{System Architecture and Implementation}
+Figure~\ref{fig:arch} is the path from one question to a scored line. The question is embedded and also matched against the fact cards. Paragraphs-only keeps the three nearest paragraphs. Cards-only keeps the three best cards. The combined prompt keeps the paragraphs and then the cards. All three setups call the same generator at temperature 0. The recorded answer is used only after the \texttt{Result:} line is written.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/architecture.png}
+\caption{Architecture of the pilot. Condition C places the fact cards after the paragraphs. Conditions A and B each keep one of those two lists.}
+\label{fig:arch}
+\end{figure}
+
+Figure~\ref{fig:code} is the code that builds that prompt. \texttt{format\_context} writes the paragraphs first and, when cards are requested, appends them under the heading \texttt{Graph facts:}. The loop maps condition A to paragraphs only, condition B to cards only, and condition C to both. The same function fills the context string for every condition, so the instruction does not change.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\columnwidth]{figures/code_context.png}
+\caption{Excerpt from \texttt{src/mechqa\_pilot.py}. The combined condition passes both the retrieved paragraphs and the retrieved cards into one context string.}
+\label{fig:code}
+\end{figure}
+
+\section{Data}
+MechQA holds 202{,}068 rows. The authors mark 20{,}346 of them as validation, and that is the only split opened for this study. Inside it the experiments used 200 rows. Within each question type the rows were sorted by the SHA-256 hash of the row id and a quota was kept from the front of that order: 67 Entity Lookup, 67 Numeric Lookup, and 66 Property Identification. Sorting by hash means the sample does not depend on the order of lines in the download. The quotas were chosen before the first scored call.
+
+Those 200 questions sit in 192 different paragraphs. The search index is exactly those 192 paragraphs. It is not the rest of the validation split and it is not the training split. The right paragraph is in the index. It reaches the prompt only if cosine similarity puts it in the top three. The system can still miss by fetching the wrong neighbours, even though the answer text is sitting in the index.
+
+Some recorded spans in the public file do not match the property named in the question, and some cards shorten an alloy name that the recorded span writes in full. Those rows were retained. Dropping them after seeing the scores would let the result edit the sample. They stay in the denominator of every rate, as noise in the file.
+
+Table~\ref{tab:sample} shows how the 200 questions spread across properties. Ultimate tensile strength and yield strength make up most of the sample. Fracture strength has two rows. A zero on those two rows is not a claim about fracture strength in general.
+
+\begin{table}[t]
+\caption{Pilot questions by recorded property. The quotas were applied on question type, so the property counts are whatever the hash sample produced.}
+\label{tab:sample}
+\centering
+\begin{tabular}{lr}
+\toprule
+Property & Questions \\
+\midrule
+Ultimate tensile strength & 86 \\
+Yield strength & 71 \\
+Ductility & 21 \\
+Young's modulus & 20 \\
+Fracture strength & 2 \\
+\midrule
+All properties & 200 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{One Question, Start to Finish}
+Every question goes through the same steps. They are written here on the GNS/Cu question so a reader can follow one pass without opening the program.
+
+\begin{enumerate}
+\item Read the question from the locked sample: ``What is the yield strength of GNS/Cu?'' The span stored beside it is 542~MPa. That span is never shown to the model.
+\item Embed the question as a search query. Each of the 192 paragraphs already has a stored document vector. Cosine similarity orders the paragraphs. Keep the top three, even when the third is only a hair above the fourth.
+\item Also match the question to the 688 cards by shared words. Tokens shorter than three characters are ignored, so a unit or a single letter does not run the score. Keep the top three cards.
+\item Paragraphs-only builds a prompt from the instruction, the three paragraphs, and the question. The combined setup uses that prompt and adds the three cards under a short heading. Cards-only uses the instruction and the three cards, with no paragraphs.
+\item The model returns one completion at temperature 0. The scorer takes the last \texttt{Result:} line. On this question the paragraphs-only line is ``542 MPa (tensile), 637 MPa (compressive).'' The combined line is ``542 MPa.''
+\item Exact match cleans both the recorded span and that line: lowercase, punctuation gone, articles gone. ``542 MPa'' matches. The longer line does not, because the extra words are still there after cleaning. Paragraphs-only is a miss that still contains the right number. The combined reply is a hit.
+\end{enumerate}
+
+None of the steps look at the recorded span before the reply is written. That span is used only in the last step. The boxes later in the paper are steps four and five for this one question. The tables in Section~\ref{sec:results} are the last step counted over all 200 questions and all three setups.
+
+The word score in step three is easy to write down. Let \(T(q)\) be the question tokens longer than two characters, and let \(T(m,p,v)\) be the tokens in the material, the property, and the value. The rank key is how big the overlap is,
+\begin{equation}
+r(q, m, p, v) = \lvert T(q) \cap T(m, p, v) \rvert.
+\end{equation}
+A card with \(r=0\) stays out of the prompt. If fewer than three cards score above zero, only those are pasted in. The rank key does not know which token is the alloy and which is the unit. On an entity question the shared tokens are often the number and the property name, so several alloys with that property compete, and cutting at three is an arbitrary cut among them.
+
+\section{Experimental Setup}
+The model is Cohere \texttt{command-a-03-2025} at temperature 0. Embeddings are Cohere \texttt{embed-v4.0}. Each setup is one call per question, so the pilot makes 600 generations. The sample file, the paragraph file, the embedding file, and the card file were written before that loop and were not edited after. If a call failed, the run picked up from the question-and-setup pairs already saved. If the answer file has a duplicate line, the last record for that pair is the one retained. The tables below are the finished pass of all 200 questions under all three setups.
+
+An earlier pass died when a monthly API quota ran out. That partial file is not where these numbers come from. The finished file stores, for each question and setup, the recorded span, the paragraph ids that were fetched, the cards that were fetched, whether the right paragraph was in the top three, and the model text.
+
+Cards-only uses \(c_G\) and no paragraph text. It is a check, not a product mode. It asks whether the cards, with nothing else, are enough. It is reported so a lift of the combined prompt over paragraphs alone is not read as ``the merged prompt won all three runs.''
+
+\section{What the Model Actually Saw}
+This MechQA run has no application screen. Both setups are batch calls. The boxes here are the context that was sent, written out so a reader can see the difference without opening a log. They use one real numeric question: ``What is the yield strength of GNS/Cu?'' The recorded answer is 542~MPa. A later box uses an entity question that all three setups miss, so the picture is not only a success.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.94\columnwidth}
+\small
+\textbf{Paragraphs only: follow similar wording.}\\[0.35em]
+The question is set against every paragraph. The three that sound most like it go to the model. Nothing else is added.\\[0.35em]
+On this question those paragraphs were: one on a graphene--copper material (GNS/Cu), one on a solder alloy, and one on a titanium composite. The model read the first and wrote\\
+\texttt{Result: 542 MPa (tensile), 637 MPa (compressive).}\\[0.35em]
+542~MPa is in that line. The scored line has to be exactly ``542 MPa,'' so the longer line is marked wrong.
+\end{minipage}}
+\caption{Paragraphs-only example for ``What is the yield strength of GNS/Cu?'' The model sees only the three closest paragraphs.}
+\label{fig:ui-vector}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.94\columnwidth}
+\small
+\textbf{Combined: those paragraphs, then three fact cards.}\\[0.35em]
+The combined prompt keeps the three paragraphs above and adds the three best short facts:\\
+GNS/Cu composite --- yield strength --- 542~MPa\\
+TNTZ-2Fe-0.4O --- yield strength --- 817~MPa\\
+longitudinal reinforcement --- yield strength --- 553~MPa\\[0.35em]
+The model can read the card instead of digging through the paragraphs. It wrote\\
+\texttt{Result: 542 MPa.}\\[0.35em]
+That line matches the recorded answer. The other two cards stay in the prompt. They are not taken out.
+\end{minipage}}
+\caption{Combined example for the same GNS/Cu question. The cards are added after the paragraphs. They do not replace them.}
+\label{fig:ui-hybrid}
+\end{figure}
+
+The two boxes are one question, not the score. Here the paragraph search did fetch the right paragraph. Exact match still failed because the reply named two strengths. The combined prompt had those same paragraphs plus a card with a single number, and the reply matched. Section~\ref{sec:results} shows that a helpful card beside a noisy paragraph is not what happens on every question type.
+
+\section{Results}
+\label{sec:results}
+\subsection{Exact match by question type}
+Table~\ref{tab:em} is exact match. The combined prompt beats paragraphs alone on Entity Lookup (0.09 against 0.00) and on Numeric Lookup (0.18 against 0.15). It loses on Property Identification (0.27 against 0.32). Overall that is 0.18 against 0.16, or 36 right replies against 31 on 200 questions. Cards alone reach 0.21, which is 42 right replies, the highest of the three.
+
+\begin{table}[t]
+\caption{Exact match on 200 MechQA validation questions. Paragraphs and combined are the two setups under comparison. Cards-only is the extra check.}
+\label{tab:em}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Question type & Paragraphs & Combined & Cards only \\
+\midrule
+Entity Lookup (67) & 0.00 & 0.09 & 0.13 \\
+Numeric Lookup (67) & 0.15 & 0.18 & 0.21 \\
+Property Identification (66) & 0.32 & 0.27 & 0.29 \\
+Overall (200) & 0.16 & 0.18 & 0.21 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Split the same 200 questions by which setup is right. Both are right on 19. The combined prompt alone is right on 17. Paragraphs alone are right on 12. Neither is right on 152. The gap of five questions is those 17 gains minus those 12 losses. Looking only at 0.18 against 0.16 hides that the merge helps one bunch and hurts another bunch of about the same size.
+
+\subsection{Was the right paragraph in the three?}
+Paragraph search puts the right paragraph in the top three for 52 of 67 Numeric Lookup questions (78\%), 50 of 66 Property Identification questions (76\%), and 5 of 67 Entity Lookup questions (7\%). The combined setup uses those same three paragraphs, so its hit rate is the same 0.54 overall. Cards-only has no paragraph list, so a hit rate is not defined for it.
+
+Entity questions share numbers across many paragraphs. The nearest paragraph is often a different alloy with a nearby strength. The card list keeps the number next to a material name, which is why cards-only scores 0.13 where paragraphs score 0.00. The combined prompt inherits that miss. The wrong paragraphs stay in the prompt, and exact match drops from 0.13 to 0.09 on that type. The paragraphs are not harmless. They tug the answer off the card.
+
+On property identification the right paragraph is already there about three times in four. Paragraphs alone are then the best of the three. Adding cards does not fix a search miss that usually did not happen, and it sometimes offers a second property name for the same number.
+
+\subsection{Exact match by property}
+Table~\ref{tab:prop} splits the same 200 questions by the property on the source record. Yield strength is where the cards help: paragraphs 0.14, combined 0.25, cards-only 0.28, on 71 questions. Ductility moves the same way on only 21 questions, from 0.14 to 0.29. Ultimate tensile strength moves the other way. Paragraphs score 0.19, cards-only 0.15, and combined 0.12, on 86 questions. That one property is big enough to wipe out much of the yield-strength gain in the average. Young's modulus is 20 questions and does not separate paragraphs from the combined prompt. Fracture strength is two questions, all three setups score zero, and no conclusion is drawn from it.
+
+\begin{table}[t]
+\caption{Exact match by recorded property. The counts are whatever the hash sample produced, not a balanced design.}
+\label{tab:prop}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Property & Paragraphs & Combined & Cards only \\
+\midrule
+Yield strength (71) & 0.14 & 0.25 & 0.28 \\
+Ult.\ tensile strength (86) & 0.19 & 0.12 & 0.15 \\
+Ductility (21) & 0.14 & 0.29 & 0.29 \\
+Young's modulus (20) & 0.10 & 0.10 & 0.15 \\
+Fracture strength (2) & 0.00 & 0.00 & 0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The right words, still a miss}
+Exact match throws out a line that contains the recorded string and then adds words. On the paragraphs-only run, 22 wrong \texttt{Result:} lines still contain that string. On the combined run, 54 wrong lines contain it. The GNS/Cu box is one of the 22. The card on that question shortened the line enough to pass. Across the sample, the combined prompt more often tucks the recorded string inside a longer line, and exact match gives no partial credit. A looser score would move both setups, and it would move the combined prompt by more questions. That looser score was not the one fixed before the run, so it is not substituted here.
+
+\subsection{An entity question all three miss}
+The GNS/Cu boxes are a case where the card helps. The next question is a case where the card has the wrong name. The question is ``Which compound has a ultimate tensile strength of 851~MPa?'' The recorded span is TNTZ-2Fe-0.4O. The top paragraphs do not include the right paragraph. The paragraphs-only reply says 851~MPa is not in the context. The top cards include ``TNT-Fe-O --- ultimate tensile strength --- 851~MPa,'' plus two other alloys at 1130~MPa and 1000~MPa. Cards-only and the combined prompt both answer TNT-Fe-O. Exact match marks both wrong.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.94\columnwidth}
+\small
+\textbf{What this miss is showing.}\\[0.35em]
+Paragraphs-only had no paragraph that stated 851~MPa, so it refused. The card list had 851~MPa stuck to a shortened name, TNT-Fe-O, not to the recorded span TNTZ-2Fe-0.4O. The combined prompt kept the unhelpful paragraphs and the shortened card, and it copied the card.\\[0.35em]
+A fact card is only as good as the name written on it. Pasting the card next to the paragraphs does not check that name against the recorded span.
+\end{minipage}}
+\caption{Entity-lookup miss on 851~MPa. The combined prompt followed the card, and the card did not use the recorded name.}
+\label{fig:entity-miss}
+\end{figure}
+
+This one row is not a rate. It is what sits behind the entity column of Table~\ref{tab:em}. The value matches. The string exact match wants does not. Some of those clashes are extraction mistakes. Some are recorded spans a person would call the same as the extracted name. The study does not separate those two causes.
+
+\section{Discussion}
+The numbers match what you would expect from pasting two sources together and never throwing one away. The combined prompt helps when the cards hold the answer and the paragraphs do not drown it. On yield strength and on ductility, the card often states the number the question asks for, and the combined score climbs toward cards-only without catching it. On ultimate tensile strength, the biggest slice of the sample, the combined prompt falls below both of the others. The overall gap of 0.02 is those slices pulling in opposite directions.
+
+Entity lookup is the clearest picture. The right paragraph is in the top three for only five of 67 questions. Cards-only, which never sees those paragraphs, scores 0.13. The combined prompt, which always sees them, scores 0.09. That drop is what the design predicts when the paragraph side is usually wrong and is never removed. Property identification is the opposite picture. The right paragraph is usually present, paragraphs alone win, and the extra cards get in the way.
+
+Two changes were not in this run. A router could send entity questions to the cards and property questions to the paragraphs. On this sample that rule would have used cards-only for 67 entity questions and paragraphs for 66 property questions, and numeric questions would still need a third choice. That router's score is not claimed, because the rule would be picked after seeing Table~\ref{tab:em}. Another change would drop paragraphs below a similarity cutoff before merging, so a top-three list of unrelated alloys would never enter the prompt. Neither change was tested. Until one of them is measured, the claim that holds is smaller: on these 200 questions, adding cards to the top paragraphs beats paragraphs alone, and the cards alone beat the combination.
+
+The near-miss count changes how a person should read the table. It does not change the table. The combined \texttt{Result:} line contains the recorded string on 54 misses, against 22 for paragraphs alone. A reader would accept some of those lines. The scorer does not. Any later paper that reports token overlap or a human judgement has to be a new run with that score chosen first. It cannot be swapped in after exact match has already been counted on this file.
+
+\section{How to Read a Miss}
+A miss in the table is not one kind of mistake. Four patterns cover the replies inspected while the rates were counted. Naming them does not change a rate. It says what the rate is mixing.
+
+The first pattern is a refusal. The \texttt{Result:} line says the context does not contain the answer. That is the honest line when the top paragraphs and the top cards really do not state the fact. On entity lookup, paragraphs-only often lands here, because the right paragraph is outside the top three and no card is supplied. Calling the refusal a miss is correct under exact match. It also shows that the search, not the model, dropped the fact.
+
+The second pattern is a longer true line. The recorded string sits inside the \texttt{Result:} line, and extra words keep the strings from matching after cleaning. The paragraphs-only reply on GNS/Cu is this pattern. Twenty-two paragraph misses and fifty-four combined misses are of this kind. The combined prompt produces more of them because a card and a paragraph often give the model two ways to say one number, and the model keeps both. Exact match then marks down the fuller sentence.
+
+The third pattern is a wrong neighbour. The reply names a real material and a real value from the context, and they are not the recorded pair. The 851~MPa reply TNT-Fe-O is this pattern when the card itself has the wrong name, and it is also this pattern when the card is right and the model copies a different card from the same list of three. The prompt always offers three cards. Nothing marks which of the three should be copied.
+
+The fourth pattern is a recorded span a person might accept under different words. A shortened alloy name, a value written once as a percent and once as a fraction, or a property described in a sentence rather than by the label in the question, all fail exact match. Those rows are not relabeled. Doing that after reading the replies would let the scorer chase the model. The public span stays the span.
+
+The boxes are a key to the tables. If a boxed reply has the recorded number and then extra words, it is the second pattern and it shows up in the near-miss count, not in Table~\ref{tab:em}. If a boxed reply copies a card whose name is not the recorded name, it is the third pattern and it is a miss for both the combined prompt and cards-only. The overall scores of 0.16, 0.18, and 0.21 are what is left after all four patterns have been marked wrong.
+
+\section{Limits of This Pilot}
+This is one sample of 200 rows, one model, and one embedding. Confidence intervals are not reported. A different hash sample of 200 could push the gap of five questions across zero. The property table makes that concrete: ultimate tensile strength alone has 86 rows, and that is the slice where the combined prompt loses.
+
+The index is the 192 paragraphs that belong to the sampled questions. A search over all 20{,}346 validation paragraphs would meet more look-alike alloys. The hit rates above are therefore easier than a search of the full collection. They still show entity lookup failing inside this small index, so the failure is not only a matter of how big the index is.
+
+Noise in the recorded spans puts a ceiling on exact match that is not separated from search error. The 851~MPa row is the kind of row that feeds that ceiling. Diagrams, pump logs, and a person correcting edges are not in MechQA, and they are not claimed. The industrial copilot mentioned earlier chooses its sources differently and was not scored on these 200 questions.
+
+Card ranking uses shared words, not a trained retriever. A dense ranker over cards might put the 851~MPa card behind a card whose material string matches the recorded span, or it might not. That comparison was not run. The model was not fine-tuned. A model trained to copy the shortest matching card would change both the exact-match rate and the near-miss rate. Temperature 0 takes away sampling noise. It does not take away a clash between a paragraph and a card.
+
+\section{Conclusion}
+The combined prompt, meaning the top three paragraphs plus the top three material--property--value cards, beats paragraphs alone on this 200-question MechQA pilot (0.18 against 0.16 exact match). The lift shows up on entity lookup and numeric lookup, and on yield strength and ductility. It reverses on property identification and on ultimate tensile strength. Seventeen questions are right only in the combined setup, and twelve are right only with paragraphs. Cards alone score 0.21 and are the best of the three, so the merged prompt is not presented as the best design.
+
+The GNS/Cu question is the benefit in a form a reader can check: the paragraphs led to a reply with two numbers, and the added card led to the single recorded number. The 851~MPa question is the matching failure: the card carried the right value and the wrong name, and the combined prompt copied it. Exact match counts both outcomes. It also withholds credit when the right string is present but the line is longer than the recorded span.
+
+The file is a fair place to continue this comparison on a larger locked validation slice, with a router and a paragraph filter treated as new setups rather than as readings of this table. It does not stand in for a textbook benchmark, and it does not stand in for a test on maintenance diagrams.
+
+\begin{thebibliography}{34}
+\bibitem{lewis2020rag}
+P. Lewis \emph{et al.}, ``Retrieval-augmented generation for knowledge-intensive NLP tasks,'' in \emph{Advances in Neural Information Processing Systems}, 2020.
+\bibitem{guu2020realm}
+K. Guu, K. Lee, Z. Tung, P. Pasupat, and M. Chang, ``REALM: Retrieval-augmented language model pre-training,'' in \emph{Proc. Int. Conf. Mach. Learn.}, 2020.
+\bibitem{izacard2021fid}
+G. Izacard and E. Grave, ``Leveraging passage retrieval with generative models for open domain question answering,'' in \emph{Proc. Conf. Eur. Chapter Assoc. Comput. Linguist.}, 2021.
+\bibitem{izacard2023atlas}
+G. Izacard \emph{et al.}, ``Atlas: Few-shot learning with retrieval augmented language models,'' \emph{J. Mach. Learn. Res.}, vol. 24, no. 251, pp. 1--43, 2023.
+\bibitem{borgeaud2022retro}
+S. Borgeaud \emph{et al.}, ``Improving language models by retrieving from trillions of tokens,'' in \emph{Proc. Int. Conf. Mach. Learn.}, 2022.
+\bibitem{gao2023ragsurvey}
+Y. Gao \emph{et al.}, ``Retrieval-augmented generation for large language models: A survey,'' 2023, arXiv:2312.10997.
+\bibitem{chen2017drqa}
+D. Chen, A. Fisch, J. Weston, and A. Bordes, ``Reading Wikipedia to answer open-domain questions,'' in \emph{Proc. Assoc. Comput. Linguist.}, 2017.
+\bibitem{karpukhin2020dpr}
+V. Karpukhin \emph{et al.}, ``Dense passage retrieval for open-domain question answering,'' in \emph{Proc. Empir. Methods Nat. Lang. Process.}, 2020.
+\bibitem{xiong2021ance}
+L. Xiong \emph{et al.}, ``Approximate nearest neighbor negative contrastive learning for dense text retrieval,'' in \emph{Proc. Int. Conf. Learn. Represent.}, 2021.
+\bibitem{khattab2020colbert}
+O. Khattab and M. Zaharia, ``ColBERT: Efficient and effective passage search via contextualized late interaction over BERT,'' in \emph{Proc. ACM SIGIR Conf. Res. Dev. Inf. Retr.}, 2020.
+\bibitem{nogueira2019bert}
+R. Nogueira and K. Cho, ``Passage re-ranking with BERT,'' 2019, arXiv:1901.04085.
+\bibitem{vaswani2017attention}
+A. Vaswani \emph{et al.}, ``Attention is all you need,'' in \emph{Advances in Neural Information Processing Systems}, 2017.
+\bibitem{devlin2019bert}
+J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova, ``BERT: Pre-training of deep bidirectional transformers for language understanding,'' in \emph{Proc. Conf. North Amer. Chapter Assoc. Comput. Linguist.}, 2019.
+\bibitem{reimers2019sbert}
+N. Reimers and I. Gurevych, ``Sentence-BERT: Sentence embeddings using Siamese BERT-networks,'' in \emph{Proc. Empir. Methods Nat. Lang. Process.}, 2019.
+\bibitem{salton1975vsm}
+G. Salton, A. Wong, and C. S. Yang, ``A vector space model for automatic indexing,'' \emph{Commun. ACM}, vol. 18, no. 11, pp. 613--620, 1975.
+\bibitem{manning2008ir}
+C. D. Manning, P. Raghavan, and H. Sch\"{u}tze, \emph{Introduction to Information Retrieval}. Cambridge, U.K.: Cambridge Univ. Press, 2008.
+\bibitem{robertson2009bm25}
+S. Robertson and H. Zaragoza, ``The probabilistic relevance framework: BM25 and beyond,'' \emph{Found. Trends Inf. Retr.}, vol. 3, no. 4, pp. 333--389, 2009.
+\bibitem{rajpurkar2016squad}
+P. Rajpurkar, J. Zhang, K. Lopyrev, and P. Liang, ``SQuAD: 100,000+ questions for machine comprehension of text,'' in \emph{Proc. Empir. Methods Nat. Lang. Process.}, 2016.
+\bibitem{rajpurkar2018squad2}
+P. Rajpurkar, R. Jia, and P. Liang, ``Know what you don't know: Unanswerable questions for SQuAD,'' in \emph{Proc. Assoc. Comput. Linguist.}, 2018.
+\bibitem{petroni2019lama}
+F. Petroni \emph{et al.}, ``Language models as knowledge bases?'' in \emph{Proc. Empir. Methods Nat. Lang. Process.}, 2019.
+\bibitem{ji2023hallucination}
+Z. Ji \emph{et al.}, ``Survey of hallucination in natural language generation,'' \emph{ACM Comput. Surv.}, vol. 55, no. 12, pp. 1--38, 2023.
+\bibitem{shuster2021hallucination}
+K. Shuster, S. Poff, M. Chen, D. Kiela, and J. Weston, ``Retrieval augmentation reduces hallucination in conversation,'' in \emph{Findings Assoc. Comput. Linguist.}, 2021.
+\bibitem{hogan2021kg}
+A. Hogan \emph{et al.}, ``Knowledge graphs,'' \emph{ACM Comput. Surv.}, vol. 54, no. 4, pp. 1--37, 2021.
+\bibitem{pan2024llmkg}
+S. Pan \emph{et al.}, ``Unifying large language models and knowledge graphs: A roadmap,'' \emph{IEEE Trans. Knowl. Data Eng.}, vol. 36, no. 7, pp. 3580--3599, 2024.
+\bibitem{yasunaga2021qagnn}
+M. Yasunaga, H. Ren, A. Bosselut, P. Liang, and J. Leskovec, ``QA-GNN: Reasoning with language models and knowledge graphs for question answering,'' in \emph{Proc. Conf. North Amer. Chapter Assoc. Comput. Linguist.}, 2021.
+\bibitem{asai2024selfrag}
+A. Asai, Z. Wu, Y. Wang, A. Sil, and H. Hajishirzi, ``Self-RAG: Learning to retrieve, generate, and critique through self-reflection,'' in \emph{Proc. Int. Conf. Learn. Represent.}, 2024.
+\bibitem{sarthi2024raptor}
+P. Sarthi \emph{et al.}, ``RAPTOR: Recursive abstractive processing for tree-organized retrieval,'' in \emph{Proc. Int. Conf. Learn. Represent.}, 2024.
+\bibitem{tshitoyan2019nature}
+V. Tshitoyan \emph{et al.}, ``Unsupervised word embeddings capture latent knowledge from materials science literature,'' \emph{Nature}, vol. 571, pp. 95--98, 2019.
+\bibitem{gupta2022matscibert}
+T. Gupta, M. Zaki, N. M. A. Krishnan, and Mausam, ``MatSciBERT: A materials domain language model for text mining and information extraction,'' \emph{npj Comput. Mater.}, vol. 8, 2022.
+\bibitem{olivetti2020apr}
+E. A. Olivetti \emph{et al.}, ``Data-driven materials research enabled by natural language processing and information extraction,'' \emph{Appl. Phys. Rev.}, vol. 7, no. 4, 2020.
+\bibitem{weston2019ner}
+L. Weston \emph{et al.}, ``Named entity recognition and normalization applied to large-scale information extraction from the materials science literature,'' \emph{J. Chem. Inf. Model.}, vol. 59, no. 9, pp. 3692--3702, 2019.
+\bibitem{edge2024graphrag}
+D. Edge \emph{et al.}, ``From local to global: A graph RAG approach to query-focused summarization,'' 2024, arXiv:2404.16130.
+\bibitem{li2026manurag}
+Y. Li, Z. Dong, F. Ameri, and J. Zhang, ``ManuRAG: Multi-modal retrieval augmented generation for manufacturing question answering,'' \emph{J. Intell. Manuf.}, 2026, doi: 10.1007/s10845-026-02800-y.
+\bibitem{zhang2026mechqa}
+M. Zhang and J. M. Cole, ``Automatic generation of a mechanical properties question-answering dataset for language model benchmarking,'' \emph{J. Chem. Inf. Model.}, 2026. Dataset: \url{https://huggingface.co/datasets/mz516/MechQA-dataset}.
+\end{thebibliography}
+
+\end{document}
