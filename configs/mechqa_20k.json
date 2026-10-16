@@ -1,0 +1,18 @@
+{
+  "dataset": "mz516/MechQA-dataset",
+  "split": "validation",
+  "sample_size": 20000,
+  "quotas": {
+    "Entity Lookup": 6667,
+    "Numeric Lookup": 6667,
+    "Property Identification": 6666
+  },
+  "top_k": 3,
+  "temperature": 0,
+  "seed_note": "Within each qa_type, rows are ordered by sha256(id) and the first quota rows are kept.",
+  "generator": "Qwen/Qwen3-8B-FP8",
+  "embedder": "mxbai-embed-large",
+  "ollama_url": "http://127.0.0.1:11434",
+  "vllm_url": "http://127.0.0.1:8011/v1/chat/completions",
+  "conditions": ["A", "B", "C"]
+}

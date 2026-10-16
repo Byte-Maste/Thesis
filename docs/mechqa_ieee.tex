@@ -9,7 +9,7 @@
 \begin{document}
 
 \title{Fact Cards Beside the Paragraphs:\\
-A 200-Question Pilot on MechQA}
+A 20,000-Question Run on MechQA}
 
 \author{
 \IEEEauthorblockN{Krishna}
@@ -26,7 +26,7 @@ Chennai, India}
 \maketitle
 
 \begin{abstract}
-A materials question is usually after one number or one alloy name sitting inside a long paragraph. This paper asks whether handing the model a few short fact cards, on top of the nearest paragraphs, makes that answer easier to copy. Both setups use the public MechQA file. Paragraphs are ranked with Cohere embeddings and cosine similarity. The second setup keeps those paragraphs and then appends material, property, and value cards taken from the same text. The model, the temperature, the instruction, and the cutoff stay fixed. On 200 validation questions locked before scoring, the combined prompt scores 0.18 exact match and paragraphs alone score 0.16. Most of that small lift comes from questions that give a number and ask which material it belongs to. A third run that sees only the cards, included so the combined score is not mistaken for the best score, reaches 0.21. Adding the cards beats paragraphs alone. It does not beat the cards by themselves.
+A materials question is usually after one number or one alloy name sitting inside a long paragraph. This paper asks whether handing the model a few short fact cards, on top of the nearest paragraphs, makes that answer easier to copy. The questions are 20{,}000 rows from the MechQA validation split. Paragraphs are ranked with \texttt{mxbai-embed-large} and cosine similarity. The generator is \texttt{Qwen3-8B-FP8} at temperature 0. The same instruction and the same cutoff of three are used for paragraphs alone, cards alone, and the combined prompt. Entity Lookup is finished: on 6{,}667 questions the combined prompt scores 0.015 exact match, cards alone 0.012, and paragraphs alone 0.005. The right paragraph is in the top three for only 1.6\% of those questions. Numeric Lookup is scored on 5{,}253 of 6{,}667 questions, where paragraphs (0.113) are just ahead of the combined prompt (0.111) and cards alone fall to 0.042. Property Identification is scored on 992 of 6{,}666 questions, where the combined prompt leads (0.167 against 0.149 and 0.043). These last two slices are still running. The combined prompt helps entity questions. It does not yet lead every question type.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -44,7 +44,7 @@ The proposed method builds both indexes from one locked set of paragraphs and co
 
 The questions come from MechQA \cite{zhang2026mechqa}. Each row has a question, one source paragraph, and a short recorded answer. The people who released that file score a reader who is already holding the right paragraph. This study withholds that paragraph and requires the system to find it. This is not the textbook question set in ManuRAG \cite{li2026manurag}, and the percentages printed there are not a target for the present experiment.
 
-The contribution of this paper is a comparison, fixed before any answer was scored, of paragraphs alone against the same paragraphs plus cards. The 200 validation questions are broken out by question type and by the five mechanical properties. The comparison also counts how often the right paragraph is among the top three, and how often the recorded words appear in the answer line even though the line still fails an exact match.
+The contribution of this paper is a comparison, fixed before any answer was scored, of paragraphs alone against the same paragraphs plus cards. The 20{,}000 validation questions are broken out by question type. The comparison also counts how often the right paragraph is among the top three. A split by the five mechanical properties is held until Numeric Lookup and Property Identification have been scored in full, so a half-finished slice is not averaged in as if it were the sample.
 
 \section{Related Work}
 \subsection{Passage retrieval and generation}
@@ -71,7 +71,7 @@ The recorded answer \(y\) is a span inside one source paragraph. The whole of \(
 
 The comparison is SQuAD exact match \cite{rajpurkar2016squad,rajpurkar2018squad2}. Both strings are lowercased. Punctuation is stripped. The words \(a\), \(an\), and \(the\) are stripped. What remains must be the same string. A reply that has the right span plus a unit note, a second number, or another name for the alloy is still wrong. The rule was kept tight so the three setups can be compared on one scale. It also explains misses a person would have let through. Those near misses are counted on their own in Section~\ref{sec:results}. They are not folded into the exact-match table.
 
-The sample has three kinds of question. Numeric Lookup asks for a value, for example ``What is the yield strength of GNS/Cu?'' Entity Lookup asks for a material given a value, for example ``Which compound has an ultimate tensile strength of 851~MPa?'' Property Identification asks which recorded property a value belongs to. The properties that actually show up are yield strength, ultimate tensile strength, fracture strength, Young's modulus, and ductility. Fracture strength appears in only two questions, so that rate is printed and is not treated as a finding.
+The sample has three kinds of question. Numeric Lookup asks for a value, for example ``What is the yield strength of GNS/Cu?'' Entity Lookup asks for a material given a value, for example ``Which compound has an ultimate tensile strength of 851~MPa?'' Property Identification asks which recorded property a value belongs to. The properties that actually show up are yield strength, ultimate tensile strength, fracture strength, Young's modulus, and ductility. Fracture strength has 510 questions in the sample. Its exact-match rate is not printed until the unfinished question types are complete.
 
 The operating modes differ only in \(c\):
 \begin{align}
@@ -96,7 +96,7 @@ From each paragraph an extractor writes triples
 \begin{equation}
 (m, p, v),
 \end{equation}
-with \(m\) a material, \(p\) a property name, and \(v\) the value on the page, plus the id of the paragraph it came from. The pilot keeps 688 triples from 192 paragraphs. The extractor may skip a fact or glue a value to a shortened alloy name. Those mistakes were left in. Fixing them by hand would describe a cleaned store, not the pipeline that actually ran.
+with \(m\) a material, \(p\) a property name, and \(v\) the value on the page, plus the id of the paragraph it came from. This run keeps 1{,}389 triples from 4{,}144 paragraphs. The extractor may skip a fact or glue a value to a shortened alloy name. Those mistakes were left in. Fixing them by hand would describe a cleaned store, not the pipeline that actually ran.
 
 A question is tied to a triple by shared words, not by another embedding. The score is a raw overlap count, not a BM25 weight \cite{robertson2009bm25}. The proposed method takes question tokens longer than two characters. A triple scores how many of those tokens show up in \(m\), \(p\), or \(v\). The card context \(c_G\) is the \(k\) triples with the highest score, written as
 \begin{equation}
@@ -146,29 +146,29 @@ Figure~\ref{fig:code} is the code that builds that prompt. \texttt{format\_conte
 \end{figure}
 
 \section{Data}
-MechQA holds 202{,}068 rows. The authors mark 20{,}346 of them as validation, and that is the only split opened for this study. Inside it the experiments used 200 rows. Within each question type the rows were sorted by the SHA-256 hash of the row id and a quota was kept from the front of that order: 67 Entity Lookup, 67 Numeric Lookup, and 66 Property Identification. Sorting by hash means the sample does not depend on the order of lines in the download. The quotas were chosen before the first scored call.
+MechQA holds 202{,}068 rows. The authors mark 20{,}346 of them as validation, and that is the only split opened for this study. Inside it the experiments used 20{,}000 rows. Within each question type the rows were sorted by the SHA-256 hash of the row id and a quota was kept from the front of that order: 6{,}667 Entity Lookup, 6{,}667 Numeric Lookup, and 6{,}666 Property Identification. Sorting by hash means the sample does not depend on the order of lines in the download. The quotas were chosen before the first scored call.
 
-Those 200 questions sit in 192 different paragraphs. The search index is exactly those 192 paragraphs. It is not the rest of the validation split and it is not the training split. The right paragraph is in the index. It reaches the prompt only if cosine similarity puts it in the top three. The system can still miss by fetching the wrong neighbours, even though the answer text is sitting in the index.
+Those 20{,}000 questions sit in 4{,}144 different paragraphs. The search index is exactly those 4{,}144 paragraphs. It is not the training split, and it leaves out the 346 validation rows that were not drawn. The right paragraph is in the index. It reaches the prompt only if cosine similarity puts it in the top three. The system can still miss by fetching the wrong neighbours, even though the answer text is sitting in the index.
 
 Some recorded spans in the public file do not match the property named in the question, and some cards shorten an alloy name that the recorded span writes in full. Those rows were retained. Dropping them after seeing the scores would let the result edit the sample. They stay in the denominator of every rate, as noise in the file.
 
-Table~\ref{tab:sample} shows how the 200 questions spread across properties. Ultimate tensile strength and yield strength make up most of the sample. Fracture strength has two rows. A zero on those two rows is not a claim about fracture strength in general.
+Table~\ref{tab:sample} shows how the 20{,}000 questions spread across properties. Ultimate tensile strength and yield strength make up most of the sample. Fracture strength has 510 rows. That count is the sample, not a score.
 
 \begin{table}[t]
-\caption{Pilot questions by recorded property. The quotas were applied on question type, so the property counts are whatever the hash sample produced.}
+\caption{The 20{,}000 questions by recorded property. The quotas were applied on question type, so the property counts are whatever the hash sample produced.}
 \label{tab:sample}
 \centering
 \begin{tabular}{lr}
 \toprule
 Property & Questions \\
 \midrule
-Ultimate tensile strength & 86 \\
-Yield strength & 71 \\
-Ductility & 21 \\
-Young's modulus & 20 \\
-Fracture strength & 2 \\
+Ultimate tensile strength & 8{,}194 \\
+Yield strength & 7{,}017 \\
+Ductility & 2{,}289 \\
+Young's modulus & 1{,}990 \\
+Fracture strength & 510 \\
 \midrule
-All properties & 200 \\
+All properties & 20{,}000 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -178,14 +178,14 @@ Every question goes through the same steps. They are written here on the GNS/Cu 
 
 \begin{enumerate}
 \item Read the question from the locked sample: ``What is the yield strength of GNS/Cu?'' The span stored beside it is 542~MPa. That span is never shown to the model.
-\item Embed the question as a search query. Each of the 192 paragraphs already has a stored document vector. Cosine similarity orders the paragraphs. Keep the top three, even when the third is only a hair above the fourth.
-\item Also match the question to the 688 cards by shared words. Tokens shorter than three characters are ignored, so a unit or a single letter does not run the score. Keep the top three cards.
+\item Embed the question as a search query. Each of the 4{,}144 paragraphs already has a stored document vector. Cosine similarity orders the paragraphs. Keep the top three, even when the third is only a hair above the fourth.
+\item Also match the question to the 1{,}389 cards by shared words. Tokens shorter than three characters are ignored, so a unit or a single letter does not run the score. Keep the top three cards.
 \item Paragraphs-only builds a prompt from the instruction, the three paragraphs, and the question. The combined setup uses that prompt and adds the three cards under a short heading. Cards-only uses the instruction and the three cards, with no paragraphs.
 \item The model returns one completion at temperature 0. The scorer takes the last \texttt{Result:} line. On this question the paragraphs-only line is ``542 MPa (tensile), 637 MPa (compressive).'' The combined line is ``542 MPa.''
 \item Exact match cleans both the recorded span and that line: lowercase, punctuation gone, articles gone. ``542 MPa'' matches. The longer line does not, because the extra words are still there after cleaning. Paragraphs-only is a miss that still contains the right number. The combined reply is a hit.
 \end{enumerate}
 
-None of the steps look at the recorded span before the reply is written. That span is used only in the last step. The boxes later in the paper are steps four and five for this one question. The tables in Section~\ref{sec:results} are the last step counted over all 200 questions and all three setups.
+None of the steps look at the recorded span before the reply is written. That span is used only in the last step. The boxes later in the paper are steps four and five for this one question. The tables in Section~\ref{sec:results} count that last step on the rows scored so far. The boxes in the next section are a walk-through from an earlier 200-question pass with a different generator. They show the prompt shape. They are not rows from Table~\ref{tab:em}.
 
 The word score in step three is easy to write down. Let \(T(q)\) be the question tokens longer than two characters, and let \(T(m,p,v)\) be the tokens in the material, the property, and the value. The rank key is how big the overlap is,
 \begin{equation}
@@ -194,9 +194,9 @@ r(q, m, p, v) = \lvert T(q) \cap T(m, p, v) \rvert.
 A card with \(r=0\) stays out of the prompt. If fewer than three cards score above zero, only those are pasted in. The rank key does not know which token is the alloy and which is the unit. On an entity question the shared tokens are often the number and the property name, so several alloys with that property compete, and cutting at three is an arbitrary cut among them.
 
 \section{Experimental Setup}
-The model is Cohere \texttt{command-a-03-2025} at temperature 0. Embeddings are Cohere \texttt{embed-v4.0}. Each setup is one call per question, so the pilot makes 600 generations. The sample file, the paragraph file, the embedding file, and the card file were written before that loop and were not edited after. If a call failed, the run picked up from the question-and-setup pairs already saved. If the answer file has a duplicate line, the last record for that pair is the one retained. The tables below are the finished pass of all 200 questions under all three setups.
+The generator is \texttt{Qwen/Qwen3-8B-FP8} at temperature 0, served with vLLM 0.31.0 from this project's own environment. Thinking is switched off. Embeddings are \texttt{mxbai-embed-large}. Each setup is one call per question, so the full sample is 60{,}000 generations. The sample file, the paragraph file, and the embedding file were written before that loop. Cards were extracted from the 4{,}144 paragraphs before answer scoring. If a call failed, the run picked up from the question-and-setup pairs already saved. If the answer file has a duplicate line, the last record for that pair is the one retained.
 
-An earlier pass died when a monthly API quota ran out. That partial file is not where these numbers come from. The finished file stores, for each question and setup, the recorded span, the paragraph ids that were fetched, the cards that were fetched, whether the right paragraph was in the top three, and the model text.
+Entity Lookup has all 6{,}667 questions under all three setups. Numeric Lookup has 5{,}253 of 6{,}667, and Property Identification has 992 of 6{,}666. Those two slices were still being generated when the table was written. The rates below use only the finished rows in each slice. They are not filled in with zeros for the rows that have not been called yet.
 
 Cards-only uses \(c_G\) and no paragraph text. It is a check, not a product mode. It asks whether the cards, with nothing else, are enough. It is reported so a lift of the combined prompt over paragraphs alone is not read as ``the merged prompt won all three runs.''
 
@@ -239,58 +239,42 @@ The two boxes are one question, not the score. Here the paragraph search did fet
 \section{Results}
 \label{sec:results}
 \subsection{Exact match by question type}
-Table~\ref{tab:em} is exact match. The combined prompt beats paragraphs alone on Entity Lookup (0.09 against 0.00) and on Numeric Lookup (0.18 against 0.15). It loses on Property Identification (0.27 against 0.32). Overall that is 0.18 against 0.16, or 36 right replies against 31 on 200 questions. Cards alone reach 0.21, which is 42 right replies, the highest of the three.
+Table~\ref{tab:em} is exact match on the rows scored when this section was written. Entity Lookup is complete. The other two rows are partial, and the denominator is the number already scored, not the quota. No overall line is printed. Averaging a finished slice with two unfinished slices would look like a result for all 20{,}000 questions.
+
+On Entity Lookup the combined prompt is the best of the three: 98 of 6{,}667 (0.015), against 78 for cards alone (0.012) and 34 for paragraphs (0.005). On the 5{,}253 numeric questions scored so far, paragraphs lead by a small margin, 596 (0.113) against 584 for the combined prompt (0.111). Cards alone are right on 218 (0.042). On the 992 property questions scored so far, the combined prompt leads, 166 (0.167) against 148 for paragraphs (0.149) and 43 for cards (0.043).
 
 \begin{table}[t]
-\caption{Exact match on 200 MechQA validation questions. Paragraphs and combined are the two setups under comparison. Cards-only is the extra check.}
+\caption{Exact match on the MechQA rows scored so far. Entity Lookup is complete. The other two rows are still running, and the count in parentheses is the number scored.}
 \label{tab:em}
 \centering
 \begin{tabular}{lccc}
 \toprule
 Question type & Paragraphs & Combined & Cards only \\
 \midrule
-Entity Lookup (67) & 0.00 & 0.09 & 0.13 \\
-Numeric Lookup (67) & 0.15 & 0.18 & 0.21 \\
-Property Identification (66) & 0.32 & 0.27 & 0.29 \\
-Overall (200) & 0.16 & 0.18 & 0.21 \\
+Entity Lookup (6{,}667) & 0.005 & 0.015 & 0.012 \\
+Numeric Lookup (5{,}253 of 6{,}667) & 0.113 & 0.111 & 0.042 \\
+Property Identification (992 of 6{,}666) & 0.149 & 0.167 & 0.043 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Split the same 200 questions by which setup is right. Both are right on 19. The combined prompt alone is right on 17. Paragraphs alone are right on 12. Neither is right on 152. The gap of five questions is those 17 gains minus those 12 losses. Looking only at 0.18 against 0.16 hides that the merge helps one bunch and hurts another bunch of about the same size.
+On the finished entity slice, both paragraphs and the combined prompt are right on 17 questions. The combined prompt alone is right on 81. Paragraphs alone are right on 17. Neither is right on 6{,}552. The gain is those 81 minus those 17. On the numeric rows scored so far the two setups trade places: the combined prompt alone is right on 143, and paragraphs alone are right on 155. On the property rows scored so far the combined prompt alone is right on 56, and paragraphs alone are right on 38.
 
 \subsection{Was the right paragraph in the three?}
-Paragraph search puts the right paragraph in the top three for 52 of 67 Numeric Lookup questions (78\%), 50 of 66 Property Identification questions (76\%), and 5 of 67 Entity Lookup questions (7\%). The combined setup uses those same three paragraphs, so its hit rate is the same 0.54 overall. Cards-only has no paragraph list, so a hit rate is not defined for it.
+Paragraph search puts the right paragraph in the top three for 2{,}042 of 5{,}253 Numeric Lookup questions (38.9\%), 345 of 992 Property Identification questions (34.8\%), and 109 of 6{,}667 Entity Lookup questions (1.6\%). The combined setup uses those same three paragraphs, so it has the same hit rate on each slice. Cards-only has no paragraph list, so a hit rate is not defined for it.
 
-Entity questions share numbers across many paragraphs. The nearest paragraph is often a different alloy with a nearby strength. The card list keeps the number next to a material name, which is why cards-only scores 0.13 where paragraphs score 0.00. The combined prompt inherits that miss. The wrong paragraphs stay in the prompt, and exact match drops from 0.13 to 0.09 on that type. The paragraphs are not harmless. They tug the answer off the card.
+Entity questions share numbers across many paragraphs. Inside an index of 4{,}144 paragraphs the nearest one is usually a different alloy. The card list keeps the number next to a material name, which is why cards alone and the combined prompt both clear paragraphs on that type. Unlike the earlier 200-question pass, the combined prompt does not fall below cards alone here. It is still a low rate: 98 hits in 6{,}667 questions.
 
-On property identification the right paragraph is already there about three times in four. Paragraphs alone are then the best of the three. Adding cards does not fix a search miss that usually did not happen, and it sometimes offers a second property name for the same number.
+On the property rows scored so far the right paragraph is present about one time in three, not three times in four. Paragraphs are no longer the best of the three on that partial slice. Cards alone stay far behind, so the lift is not ``cards instead of paragraphs.'' It is paragraphs plus a few cards.
 
 \subsection{Exact match by property}
-Table~\ref{tab:prop} splits the same 200 questions by the property on the source record. Yield strength is where the cards help: paragraphs 0.14, combined 0.25, cards-only 0.28, on 71 questions. Ductility moves the same way on only 21 questions, from 0.14 to 0.29. Ultimate tensile strength moves the other way. Paragraphs score 0.19, cards-only 0.15, and combined 0.12, on 86 questions. That one property is big enough to wipe out much of the yield-strength gain in the average. Young's modulus is 20 questions and does not separate paragraphs from the combined prompt. Fracture strength is two questions, all three setups score zero, and no conclusion is drawn from it.
-
-\begin{table}[t]
-\caption{Exact match by recorded property. The counts are whatever the hash sample produced, not a balanced design.}
-\label{tab:prop}
-\centering
-\begin{tabular}{lccc}
-\toprule
-Property & Paragraphs & Combined & Cards only \\
-\midrule
-Yield strength (71) & 0.14 & 0.25 & 0.28 \\
-Ult.\ tensile strength (86) & 0.19 & 0.12 & 0.15 \\
-Ductility (21) & 0.14 & 0.29 & 0.29 \\
-Young's modulus (20) & 0.10 & 0.10 & 0.15 \\
-Fracture strength (2) & 0.00 & 0.00 & 0.00 \\
-\bottomrule
-\end{tabular}
-\end{table}
+A split of exact match by yield strength, ultimate tensile strength, ductility, Young's modulus, and fracture strength is not reported. Numeric Lookup and Property Identification are unfinished, and the rows scored so far are not a balanced draw of those properties. Table~\ref{tab:sample} is only the composition of the locked 20{,}000. It is not a score.
 
 \subsection{The right words, still a miss}
-Exact match throws out a line that contains the recorded string and then adds words. On the paragraphs-only run, 22 wrong \texttt{Result:} lines still contain that string. On the combined run, 54 wrong lines contain it. The GNS/Cu box is one of the 22. The card on that question shortened the line enough to pass. Across the sample, the combined prompt more often tucks the recorded string inside a longer line, and exact match gives no partial credit. A looser score would move both setups, and it would move the combined prompt by more questions. That looser score was not the one fixed before the run, so it is not substituted here.
+Exact match throws out a line that contains the recorded string and then adds words. That near-miss count was made on the earlier 200-question pass. It has not been repeated on these 20{,}000 questions, so the old counts of 22 and 54 are not carried forward.
 
 \subsection{An entity question all three miss}
-The GNS/Cu boxes are a case where the card helps. The next question is a case where the card has the wrong name. The question is ``Which compound has a ultimate tensile strength of 851~MPa?'' The recorded span is TNTZ-2Fe-0.4O. The top paragraphs do not include the right paragraph. The paragraphs-only reply says 851~MPa is not in the context. The top cards include ``TNT-Fe-O --- ultimate tensile strength --- 851~MPa,'' plus two other alloys at 1130~MPa and 1000~MPa. Cards-only and the combined prompt both answer TNT-Fe-O. Exact match marks both wrong.
+The GNS/Cu boxes are a case where the card helps. The next question is a case where the card has the wrong name. The question is ``Which compound has a ultimate tensile strength of 851~MPa?'' The recorded span is TNTZ-2Fe-0.4O. The top paragraphs do not include the right paragraph. The paragraphs-only reply says 851~MPa is not in the context. The top cards include ``TNT-Fe-O --- ultimate tensile strength --- 851~MPa,'' plus two other alloys at 1130~MPa and 1000~MPa. Cards-only and the combined prompt both answer TNT-Fe-O. Exact match marks both wrong. The transcript is from the earlier pass. It is kept because it shows the failure mode behind the entity column, not because those three replies were regenerated with \texttt{Qwen3-8B-FP8}.
 
 \begin{figure}[H]
 \centering
@@ -307,42 +291,42 @@ A fact card is only as good as the name written on it. Pasting the card next to 
 This one row is not a rate. It is what sits behind the entity column of Table~\ref{tab:em}. The value matches. The string exact match wants does not. Some of those clashes are extraction mistakes. Some are recorded spans a person would call the same as the extracted name. The study does not separate those two causes.
 
 \section{Discussion}
-The numbers match what you would expect from pasting two sources together and never throwing one away. The combined prompt helps when the cards hold the answer and the paragraphs do not drown it. On yield strength and on ductility, the card often states the number the question asks for, and the combined score climbs toward cards-only without catching it. On ultimate tensile strength, the biggest slice of the sample, the combined prompt falls below both of the others. The overall gap of 0.02 is those slices pulling in opposite directions.
+The index is 4{,}144 paragraphs, so a top-three list is a much thinner cut than it was on the 192-paragraph pilot. That is why every exact-match rate in Table~\ref{tab:em} sits far below the rates from that pilot. The ordering is also not the same, and the unfinished slices can still move.
 
-Entity lookup is the clearest picture. The right paragraph is in the top three for only five of 67 questions. Cards-only, which never sees those paragraphs, scores 0.13. The combined prompt, which always sees them, scores 0.09. That drop is what the design predicts when the paragraph side is usually wrong and is never removed. Property identification is the opposite picture. The right paragraph is usually present, paragraphs alone win, and the extra cards get in the way.
+Entity lookup is the clearest finished picture. The right paragraph is in the top three for 109 of 6{,}667 questions. Paragraphs alone are right 34 times. Cards alone are right 78 times. The combined prompt is right 98 times. Adding the cards helps, and on this slice the paragraphs left in the prompt do not pull the combined score back under cards alone. Most entity questions are still misses for every setup, because neither list usually holds the recorded name.
 
-Two changes were not in this run. A router could send entity questions to the cards and property questions to the paragraphs. On this sample that rule would have used cards-only for 67 entity questions and paragraphs for 66 property questions, and numeric questions would still need a third choice. That router's score is not claimed, because the rule would be picked after seeing Table~\ref{tab:em}. Another change would drop paragraphs below a similarity cutoff before merging, so a top-three list of unrelated alloys would never enter the prompt. Neither change was tested. Until one of them is measured, the claim that holds is smaller: on these 200 questions, adding cards to the top paragraphs beats paragraphs alone, and the cards alone beat the combination.
+Numeric lookup, on 5{,}253 questions, is the opposite small gap. Paragraphs are right 596 times and the combined prompt 584 times. Cards alone are right 218 times. The paragraphs are doing the work. The cards, by themselves, are not. Property identification is only 992 questions so far. There the combined prompt leads (166 against 148 and 43), and the right paragraph is present about 35\% of the time. That is not the pattern from the pilot, where paragraphs won that type. It is also not a finished count.
 
-The near-miss count changes how a person should read the table. It does not change the table. The combined \texttt{Result:} line contains the recorded string on 54 misses, against 22 for paragraphs alone. A reader would accept some of those lines. The scorer does not. Any later paper that reports token overlap or a human judgement has to be a new run with that score chosen first. It cannot be swapped in after exact match has already been counted on this file.
+Two changes were not in this run. A router could send entity questions to the cards and numeric questions to the paragraphs. That router's score is not claimed, because the rule would be picked after seeing Table~\ref{tab:em}. Another change would drop paragraphs below a similarity cutoff before merging. Neither change was tested. Until Numeric Lookup and Property Identification finish, the claim that holds is the finished slice: on 6{,}667 entity questions, adding cards to the top paragraphs beats both paragraphs alone and cards alone, and the absolute rate stays under 0.02 because the right paragraph is rarely retrieved.
 
 \section{How to Read a Miss}
 A miss in the table is not one kind of mistake. Four patterns cover the replies inspected while the rates were counted. Naming them does not change a rate. It says what the rate is mixing.
 
 The first pattern is a refusal. The \texttt{Result:} line says the context does not contain the answer. That is the honest line when the top paragraphs and the top cards really do not state the fact. On entity lookup, paragraphs-only often lands here, because the right paragraph is outside the top three and no card is supplied. Calling the refusal a miss is correct under exact match. It also shows that the search, not the model, dropped the fact.
 
-The second pattern is a longer true line. The recorded string sits inside the \texttt{Result:} line, and extra words keep the strings from matching after cleaning. The paragraphs-only reply on GNS/Cu is this pattern. Twenty-two paragraph misses and fifty-four combined misses are of this kind. The combined prompt produces more of them because a card and a paragraph often give the model two ways to say one number, and the model keeps both. Exact match then marks down the fuller sentence.
+The second pattern is a longer true line. The recorded string sits inside the \texttt{Result:} line, and extra words keep the strings from matching after cleaning. The paragraphs-only reply on GNS/Cu is this pattern. How often it happens on the 20{,}000-question run has not been counted. The combined prompt can produce it when a card and a paragraph give the model two ways to say one number, and the model keeps both. Exact match then marks down the fuller sentence.
 
 The third pattern is a wrong neighbour. The reply names a real material and a real value from the context, and they are not the recorded pair. The 851~MPa reply TNT-Fe-O is this pattern when the card itself has the wrong name, and it is also this pattern when the card is right and the model copies a different card from the same list of three. The prompt always offers three cards. Nothing marks which of the three should be copied.
 
 The fourth pattern is a recorded span a person might accept under different words. A shortened alloy name, a value written once as a percent and once as a fraction, or a property described in a sentence rather than by the label in the question, all fail exact match. Those rows are not relabeled. Doing that after reading the replies would let the scorer chase the model. The public span stays the span.
 
-The boxes are a key to the tables. If a boxed reply has the recorded number and then extra words, it is the second pattern and it shows up in the near-miss count, not in Table~\ref{tab:em}. If a boxed reply copies a card whose name is not the recorded name, it is the third pattern and it is a miss for both the combined prompt and cards-only. The overall scores of 0.16, 0.18, and 0.21 are what is left after all four patterns have been marked wrong.
+The boxes are a key to the kind of miss, not a second score. If a boxed reply has the recorded number and then extra words, it is the second pattern and it is still a miss in Table~\ref{tab:em}. If a boxed reply copies a card whose name is not the recorded name, it is the third pattern and it is a miss for both the combined prompt and cards-only. The rates in that table are what is left after all four patterns have been marked wrong.
 
 \section{Limits of This Pilot}
-This is one sample of 200 rows, one model, and one embedding. Confidence intervals are not reported. A different hash sample of 200 could push the gap of five questions across zero. The property table makes that concrete: ultimate tensile strength alone has 86 rows, and that is the slice where the combined prompt loses.
+Entity Lookup is one finished sample of 6{,}667 rows, one model, and one embedding. Confidence intervals are not reported. Numeric Lookup and Property Identification in Table~\ref{tab:em} are incomplete. A later page should replace those two rows when their quotas are full, rather than treat 0.113 and 0.167 as final. Ultimate tensile strength alone has 8{,}194 of the 20{,}000 questions, so a property split can still move the average once it is computed on the finished file.
 
-The index is the 192 paragraphs that belong to the sampled questions. A search over all 20{,}346 validation paragraphs would meet more look-alike alloys. The hit rates above are therefore easier than a search of the full collection. They still show entity lookup failing inside this small index, so the failure is not only a matter of how big the index is.
+The index is the 4{,}144 paragraphs that belong to the sampled questions. A search over all 20{,}346 validation paragraphs would meet more look-alike alloys. The hit rates above are therefore easier than a search of the full collection. They still show entity lookup failing inside this index: the right paragraph is retrieved 109 times in 6{,}667.
 
-Noise in the recorded spans puts a ceiling on exact match that is not separated from search error. The 851~MPa row is the kind of row that feeds that ceiling. Diagrams, pump logs, and a person correcting edges are not in MechQA, and they are not claimed. The industrial copilot mentioned earlier chooses its sources differently and was not scored on these 200 questions.
+Noise in the recorded spans puts a ceiling on exact match that is not separated from search error. The 851~MPa row is the kind of row that feeds that ceiling. Diagrams, pump logs, and a person correcting edges are not in MechQA, and they are not claimed. The industrial copilot mentioned earlier chooses its sources differently and was not scored on these 20{,}000 questions.
 
 Card ranking uses shared words, not a trained retriever. A dense ranker over cards might put the 851~MPa card behind a card whose material string matches the recorded span, or it might not. That comparison was not run. The model was not fine-tuned. A model trained to copy the shortest matching card would change both the exact-match rate and the near-miss rate. Temperature 0 takes away sampling noise. It does not take away a clash between a paragraph and a card.
 
 \section{Conclusion}
-The combined prompt, meaning the top three paragraphs plus the top three material--property--value cards, beats paragraphs alone on this 200-question MechQA pilot (0.18 against 0.16 exact match). The lift shows up on entity lookup and numeric lookup, and on yield strength and ductility. It reverses on property identification and on ultimate tensile strength. Seventeen questions are right only in the combined setup, and twelve are right only with paragraphs. Cards alone score 0.21 and are the best of the three, so the merged prompt is not presented as the best design.
+On the finished Entity Lookup slice, the combined prompt beats both paragraphs alone and cards alone (0.015, against 0.005 and 0.012) on 6{,}667 questions. The right paragraph is in the top three only 109 times, so almost every entity question is still a miss. On 5{,}253 numeric questions scored so far, paragraphs are slightly ahead of the combined prompt (0.113 against 0.111) and cards alone are far behind (0.042). On 992 property questions scored so far, the combined prompt leads (0.167 against 0.149 and 0.043). Those two rows are not the full quotas.
 
-The GNS/Cu question is the benefit in a form a reader can check: the paragraphs led to a reply with two numbers, and the added card led to the single recorded number. The 851~MPa question is the matching failure: the card carried the right value and the wrong name, and the combined prompt copied it. Exact match counts both outcomes. It also withholds credit when the right string is present but the line is longer than the recorded span.
+The GNS/Cu question, from an earlier generator, is the benefit in a form a reader can check: the paragraphs led to a reply with two numbers, and the added card led to the single recorded number. The 851~MPa question is the matching failure: the card carried the right value and the wrong name, and the combined prompt copied it. Exact match counts both kinds of outcome. It also withholds credit when the right string is present but the line is longer than the recorded span.
 
-The file is a fair place to continue this comparison on a larger locked validation slice, with a router and a paragraph filter treated as new setups rather than as readings of this table. It does not stand in for a textbook benchmark, and it does not stand in for a test on maintenance diagrams.
+The remaining numeric and property questions are the next rows of this same run. A router and a paragraph filter stay new setups, not readings of Table~\ref{tab:em}. This file does not stand in for a textbook benchmark, and it does not stand in for a test on maintenance diagrams.
 
 \begin{thebibliography}{34}
 \bibitem{lewis2020rag}
